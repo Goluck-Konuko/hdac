@@ -19,7 +19,7 @@ class HEVC:
     '''
         HEVC HM CODEC WRAPPER
     '''
-    def __init__(self, qp = 50,fps=30,frame_dim=(256,256),gop_size=10, config='models/utils/hevc_hm/config_template.cfg', sequence = None,out_path='hevc_logs/'):
+    def __init__(self, qp = 50,fps=30,frame_dim=(256,256),gop_size=10, config='modules/utils/hevc_hm/config_template.cfg', sequence = None,out_path='hevc_logs/'):
         self.qp = qp
         self.fps = fps
         self.n_frames = gop_size
@@ -103,7 +103,7 @@ class HEVC:
 
 		
     def encode(self):
-        cmd = ["models/utils/hevc_hm/hm_16_15_regular/bin/TAppEncoderStatic", "-c", self.config_out_path,"-i", self.in_yuv_path]
+        cmd = ["modules/utils/hevc_hm/hm_16_15_regular/bin/TAppEncoderStatic", "-c", self.config_out_path,"-i", self.in_yuv_path]
         with open(self.log_path, 'w+') as out:
             subprocess.call(cmd, stdout=out)
         bytes = os.path.getsize(self.ostream_path)

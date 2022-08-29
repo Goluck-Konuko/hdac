@@ -5,69 +5,90 @@ import torch
 import numpy as np
 import contextlib
 from tempfile import mkstemp
-from typing import List
+from typing import List, Dict
 from .arithmetic_coder import ArithmeticEncoder,FlatFrequencyTable,SimpleFrequencyTable,ArithmeticEncoder,BitOutputStream
 import itertools
 
 class KeypointCompress:
-    def __init__(self,q_step=64, num_kp=10, out_dir = 'log/') -> None:
+    def __init__(self,q_step: int=64, num_kp: int=10, out_dir: str = 'log/', difference: int = 1) -> None:
+        '''
+            Motion keypoint quantization and coding module
+            ::q_tep --> Number of quantization steps [64,128,256]
+            ::num_kp --> Number of expected keypoints
+            ::difference --> residual coding strategy:: 0 - (Frame 0 - Frame t), 1 - (Frame (t-1) - Frame t )
+            ::out_dir --> Output directory for the coded bitstream
+        '''
         self.q_step = q_step
         self.num_kp = num_kp
+        self.difference = difference
         self.residuals = []
+        self.res_values = []
         self.out_dir = out_dir
         self.total_bytes = 0
         self.idx = 1
         self.kp_reference = None
+        
 
     def reset(self):
         self.kp_reference = None
         self.total_bytes = 0
         self.residuals = []
 
-    def _get_residual(self,src,drv):
+    def _get_cdf(self) -> tuple:
+        kp_data = np.array(self.res_values)
+        count, bins = np.histogram(kp_data, bins=20)
+        pdf = count/ sum(count)
+        cdf = np.cumsum(pdf)
+        return cdf,pdf, bins
+
+    def _get_residual(self,src: Dict[str, torch.tensor],drv: Dict[str, torch.tensor]) -> List[int]:
         sr = torch.round((src+1)*self.q_step/1).int()
         dr = torch.round((drv+1)*self.q_step/1).int()
         val_diff = sr-dr
         return val_diff.flatten().tolist()
 
-    def _decode_kp_val(self, src, kp_res):
+    def _decode_kp_val(self, src: Dict[str, torch.tensor], kp_res: List[int])-> torch.tensor:
         kp_res = torch.tensor(np.array(kp_res).reshape(1, self.num_kp, 2), dtype=torch.float32)
         sr = torch.round((src+1)*self.q_step/1).int()
         dr = (sr - kp_res)/self.q_step - 1
         return dr
 
-    def _decode_kp_jacobians(self,src, kp_res):
+    def _decode_kp_jacobians(self,src: Dict[str, torch.tensor], kp_res: List[int])-> torch.tensor:
         kp_res = torch.tensor(np.array(kp_res).reshape(1, self.num_kp, 2,2), dtype=torch.float32)
         dr = (src - kp_res)/self.q_step - 1
         return dr
 
-    def encode_kp(self,kp_source: dict,kp_driving: dict):
+    def encode_kp(self,kp_prev: Dict[str, torch.tensor],kp_driving: Dict[str, torch.tensor], out_dir='../results/')-> tuple:
+        self.out_dir = out_dir
+        if not os.path.exists(out_dir):
+            os.makedirs(out_dir)
+
         if self.kp_reference is None:
-            self.kp_reference = kp_source
-        kp_res = self._get_residual(self.kp_reference['value'],kp_driving['value'])
+            self.kp_reference = kp_prev
+        kp_res = self._get_residual(kp_prev['value'],kp_driving['value'])
         res = kp_res
         if 'jacobian' in kp_driving:
-            jc_res = self._get_residual(self.kp_reference['jacobian'],kp_driving['jacobian'])
+            jc_res = self._get_residual(kp_prev['jacobian'],kp_driving['jacobian'])
             res += jc_res
-
+        self.res_values += res 
         #decode the kps for animation
-        kp_val = self._decode_kp_val(self.kp_reference['value'], res[:self.num_kp*2])
+        kp_val = self._decode_kp_val(kp_prev['value'], res[:self.num_kp*2])
         kp_frame     = {'value': kp_val}
         if 'jacobian' in kp_driving:
-            kp_jacobian = self._decode_kp_jacobians(self.kp_reference['jacobian'], res[self.num_kp*2:])
+            kp_jacobian = self._decode_kp_jacobians(kp_prev['jacobian'], res[self.num_kp*2:])
             kp_frame['jacobian'] = kp_jacobian
         self.residuals.append(res)
         out_path=self.out_dir+f'_{self.idx}.bin'
-        final_encoder_expgolomb(res,out_path, 0) 
+        final_encoder_expgolomb(res,out_path, 0) #perform expgolomb coding on the keypoint difference residuals
         self.total_bytes += filesize(out_path)
         os.remove(out_path)
-        self.kp_reference = kp_frame
-        # total_bytes += write_kp_bitstream(self.residuals, out_path=self.out_dir+f'_{self.idx}.bin', order=0)
+        if self.difference == 1:
+            self.kp_reference = kp_frame
         return kp_frame, res
 
-    def get_bitstream(self):
-        # bytes = write_kp_bitstream(self.residuals, out_path=self.out_dir, order=0)
-        return self.total_bytes*8
+    def get_bitstream(self)-> tuple:
+        cdf,pdf, bins = self._get_cdf()
+        return self.total_bytes*8, {'cdf':cdf.tolist(),'pdf':pdf.tolist(), 'bins':bins.tolist()}
 
 
 
@@ -274,13 +295,9 @@ def write_exp_golomb(data, out_path, order=0):
 def final_encoder_expgolomb(datares,outputfile, MODEL_ORDER = 0):
      # Must be at least -1 and match ppm-decompress.py. Warning: Exponential memory usage at O(257^n).
     with contextlib.closing(BitOutputStream(open(outputfile, "wb"))) as bitout:  #arithmeticcoding.
-    
         enc = ArithmeticEncoder(256, bitout) #########arithmeticcoding.
-        #print(enc)
         model = PpmModel(MODEL_ORDER, 3, 2)  ##########ppmmodel.
-        #print(model)
         history = []
-
         # Read and encode one byte
         symbol=datares
         #print(symbol)
@@ -289,7 +306,6 @@ def final_encoder_expgolomb(datares,outputfile, MODEL_ORDER = 0):
         symbol = dataconvert_expgolomb(symbol)
         #print(symbol)
         symbollist = list_binary_expgolomb(symbol)
-
         for ii in symbollist:
             #print(ii)
             i_number=int(ii)
@@ -312,41 +328,21 @@ def write_kp_bitstream(kp_list, out_path='bitstream.bin', order=0):
         os.remove(out_path)
     return total_bytes
 
-# def write_kp_bitstream(kp_list, out_path='bitstream.bin'):
-#     # kps = np.array(kp_list).tobytes()
-#     #initialize arithmetic coding
-#     #NOTE: Entropy coding still not optimized!
-#     initfreqs = FlatFrequencyTable(257)
-#     freqs  = None
-#     total_bytes = 0
-#     for idx, kp in enumerate(kp_list):
-#         kp_in, kp_in_filepath = mkstemp(suffix=".bin")
-#         kps = np.array(kp).tobytes()
+def write_enh_bitstream(kp_list, out_path='bitstream.bin'):
+    # kps = np.array(kp_list).tobytes()
+    #initialize arithmetic coding
+    #NOTE: Entropy coding still not optimized!
+    total_bytes = 0
+    for idx, kp in enumerate(kp_list):
+        kp_in, kp_in_filepath = mkstemp(suffix=".bin")
+        # kps = np.array(kp).tobytes()
 
-#         with open(kp_in_filepath, "wb") as keypoints:
-#             keypoints.write(kps)
-					
-#         if freqs is None:
-#             freqs = FlatFrequencyTable(initfreqs)
-#         else:
-#             freqs = FlatFrequencyTable(freqs)
-#         with open(kp_in_filepath, 'rb') as inp, contextlib.closing(BitOutputStream(open(out_path, "wb"))) as bitout:
-#             enc = ArithmeticEncoder(32,bitout)
-#             while True:
-#                 # Read and encode one byte
-#                 symbol = inp.read(1)
-#                 if len(symbol) == 0:
-#                     break
-#                 enc.write(freqs, symbol[0])
-#                 freqs.increment(symbol[0])
-#             enc.write(freqs, 256)  # EOF
-    #         enc.finish()
-
-    #     os.close(kp_in)
-    #     os.remove(kp_in_filepath)
-    #     total_bytes += filesize(out_path)
-    #     os.remove(out_path)
-    # return total_bytes
+        with open(kp_in_filepath, "wb") as keypoints:
+            keypoints.write(kp)
+        total_bytes += filesize(kp_in_filepath)	
+        os.close(kp_in)
+        os.remove(kp_in_filepath)
+    return total_bytes
 
 def write_uints(fd, values, fmt=">{:d}I"):
     fd.write(struct.pack(fmt.format(len(values)), *values))

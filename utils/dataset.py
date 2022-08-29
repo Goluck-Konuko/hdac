@@ -1,7 +1,7 @@
 import os
 from skimage import io, img_as_float32
 from skimage.color import gray2rgb
-from imageio import mimread
+import imageio
 import numpy as np
 from torch.utils.data import Dataset
 from utils.augmentation import AllAugmentationTransform
@@ -15,6 +15,7 @@ def read_video(name: str, frame_shape: Tuple[int, int, int]) -> np.array:
       - '.mp4' and'.gif'
       - folder with videos
     """
+    fps = 20
     if os.path.isdir(name):
         frames = sorted(os.listdir(name))
         num_frames = len(frames)
@@ -36,7 +37,9 @@ def read_video(name: str, frame_shape: Tuple[int, int, int]) -> np.array:
         video_array = video_array.reshape((-1,) + frame_shape)
         video_array = np.moveaxis(video_array, 1, 2)
     elif name.lower().endswith('.gif') or name.lower().endswith('.mp4') or name.lower().endswith('.mov'):
-        video = np.array(mimread(name))
+        video = np.array(imageio.mimread(name))
+        if name.lower().endswith('.mp4'):
+            fps = imageio.get_reader(name).get_meta_data()['fps']
         if len(video.shape) == 3:
             video = np.array([gray2rgb(frame) for frame in video])
         if video.shape[-1] == 4:
@@ -45,7 +48,7 @@ def read_video(name: str, frame_shape: Tuple[int, int, int]) -> np.array:
     else:
         raise Exception("Unknown file extensions  %s" % name)
 
-    return video_array
+    return video_array, fps
 
 class FramesDataset(Dataset):
     """
@@ -59,7 +62,6 @@ class FramesDataset(Dataset):
                         is_train: bool=True, base_layer: bool=False,
                         augmentation_params: Dict[Dict[str,bool],Dict[str,bool]]=None, 
                         num_sources: int=2):
-        print("working")
         self.root_dir: str = root_dir
         self.videos: List[str] = os.listdir(self.root_dir)
         self.base_layer: bool = base_layer
@@ -86,6 +88,7 @@ class FramesDataset(Dataset):
         return len(self.videos)
 
     def __getitem__(self, idx: int) -> Dict[str, np.array]:
+        out = {}
         if self.is_train:
             name = self.train_videos[idx]
             path = os.path.join(self.root_dir, name)
@@ -93,7 +96,7 @@ class FramesDataset(Dataset):
             if self.base_layer:
                 hevc_path = os.path.join(self.root_dir_hevc, name) #_{np.random.choice([40,42,44,46,48,50])}
 
-            video = read_video(path, frame_shape=self.frame_shape)
+            video,fps = read_video(path, frame_shape=self.frame_shape)
             if self.base_layer:
                 hevc_video = read_video(hevc_path, frame_shape = self.frame_shape)
                 num_frames = len(hevc_video)
@@ -109,7 +112,7 @@ class FramesDataset(Dataset):
             if self.transform is not None:
                 video_array = self.transform(video_array)
             
-            out = {}
+            
             source = np.array(video_array[0], dtype='float32')
             driving = np.array(video_array[1], dtype='float32')
             out['source'] = source.transpose((2, 0, 1))
@@ -117,6 +120,15 @@ class FramesDataset(Dataset):
             if self.base_layer:
                 hevc_base = np.array(video_array[-1], dtype="float32") #assume only the driving frame has a base layer
                 out['hevc'] = hevc_base.transpose((2,0,1))
+        else:
+            name = self.test_videos[idx]
+            path = os.path.join(self.root_dir, name)
+            video_name = os.path.basename(path)
+            video,fps = read_video(path, frame_shape=self.frame_shape)
+            out['video'] = video.transpose((3, 0, 1, 2))
+
+        out['name'] = video_name
+        out['fps'] = fps
         return out
 
 class DatasetRepeater(Dataset):

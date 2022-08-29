@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from torch.optim.lr_scheduler import MultiStepLR
-from models import GeneratorFullModel, DiscriminatorFullModel
+from modules import GeneratorFullModel, DiscriminatorFullModel
 from tqdm import trange
 from utils.logger import Logger
 from utils.dataset import DatasetRepeater

@@ -43,13 +43,13 @@ model_params:
     use_kp: True
 
 train_params:
-  num_epochs: 20
-  num_repeats: 1
+  num_epochs: 100
+  num_repeats: 25
   epoch_milestones: []
   lr_generator: 2.0e-4
   lr_discriminator: 2.0e-4
   lr_kp_detector: 2.0e-4
-  batch_size: 1
+  batch_size: 18
   scales: [1, 0.5, 0.25, 0.125]
   checkpoint_freq: 25
   transform_params:
@@ -64,19 +64,8 @@ train_params:
     equivariance_value: 10
     equivariance_jacobian: 0
 
-reconstruction_params:
-  num_videos: 1000
-  format: ".mp4"
-
-animate_params:
-  num_pairs: 50
-  format: ".mp4"
-  normalization_params:
-    adapt_movement_scale: False
-    use_relative_movement: True
-    use_relative_jacobian: True
 
 visualizer_params:
-  kp_size: 5
+  kp_size: 3
   draw_border: True
   colormap: "gist_rainbow"

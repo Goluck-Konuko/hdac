@@ -1,7 +1,7 @@
 dataset_params:
   root_dir: data/
   frame_shape: [256, 256, 3]
-  base_layer: False
+  base_layer: True
   num_sources: 2
   augmentation_params:
     flip_param:
@@ -49,7 +49,7 @@ train_params:
   lr_generator: 2.0e-4
   lr_discriminator: 2.0e-4
   lr_kp_detector: 2.0e-4
-  batch_size: 18
+  batch_size: 1
   scales: [1, 0.5, 0.25, 0.125]
   checkpoint_freq: 25
   transform_params:
