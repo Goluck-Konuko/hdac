@@ -16,7 +16,7 @@ Describes the configuration settings for the pre-trained model. See ```config/da
 Use ```config/dac_test.yaml``` at inference time
 
 ### Pre-trained checkpoint
-Checkpoints can be found under following link: [google-drive](https://drive.google.com/file/d/1haJ2vmp5RHS5MdSh2Pk7EnUNgiLQgPlS/view?usp=sharing). Download and place in the ```cpks/``` directory.
+Checkpoints can be found under following link: [google-drive](https://drive.google.com/drive/folders/1_jIt9Bg-o_1-8_11DkVuHBvqHQH5e4tS?usp=sharing). Download and place in the ```cpks/``` directory.
 
 #### BPG Codec
 Required for source frame compression under low latency conditions. Can be replaced with any off the shelf (Fast) image compression algorithm like JPEG or JPEG2000
