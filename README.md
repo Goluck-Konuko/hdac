@@ -23,6 +23,7 @@ Required for source frame compression under low latency conditions. Can be repla
 
 #### HM-HEVC Codec
 We include the standard HM-HEVC codec implementation for benchmark testing. Verify HEVC configuration and change as desired.
+-Download the "hevc_hm" folder from <https://drive.google.com/drive/folders/1SRppJoipBX8-tODl9tcSGl6nAybfkbMT?usp=share_link> and add it to the ``modules/utils/`` folder
 
 #### Metrics
 We include a metrics module combining the suggestions from JPEG-AI with popular quantiative metrics used in computer vision and beyond.

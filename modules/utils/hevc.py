@@ -69,6 +69,7 @@ class HEVC:
         template = template.replace('inputNrFrames', str(self.n_frames))
         template = template.replace('inputSkip', str(self.skip_frames))
         template = template.replace('inputFPS', str(self.fps))
+        template = template.replace('intraPeriod',str(self.n_frames))
         template = template.replace('setQP', str(self.qp))
         with open(self.config_out_path, 'w+') as cfg_file:
             cfg_file.write(template)
